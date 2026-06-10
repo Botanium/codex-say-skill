@@ -1,6 +1,6 @@
-# Codex Say Skill
+# Codex Say
 
-Local, no-key read-aloud for Codex and ChatGPT workflows on macOS.
+Local, no-key read-aloud for Codex and ChatGPT workflows on macOS, packaged as a Codex plugin with a reusable `say` skill.
 
 This skill uses macOS `say` locally, so speech does not send the spoken text through a model. It is designed for cognitive offloading: read visually while listening to the same answer, Markdown report, clipboard text, or selected chat output.
 
@@ -9,14 +9,22 @@ This skill uses macOS `say` locally, so speech does not send the spoken text thr
 - Read the latest Codex final answer from the local transcript.
 - Read the next final answer automatically with `next`.
 - Turn on thread-scoped automatic read-aloud for every future final answer.
-- Queue automatic read-aloud responses from background threads instead of speaking over the active thread.
-- Resume automatic speech around the interrupted chunk when the active thread changes or speech is stopped.
 - Read clipboard text, inline text, or Markdown files.
 - Use speed multipliers such as `--speed 1x`, `--speed 1.5x`, and `--speed 2x`.
 - Skip fenced code blocks silently for a more natural listening flow.
 - Stop active speech and stale launchd jobs with one command.
 
-## Install
+## Install as a Codex plugin
+
+The repo includes a plugin manifest at:
+
+```bash
+.codex-plugin/plugin.json
+```
+
+You can install the plugin from this repository in Codex, or use the local skill installer below while developing.
+
+## Install the local skill helper
 
 ```bash
 git clone https://github.com/Botanium/codex-say-skill.git
@@ -60,8 +68,6 @@ In Codex chat:
 /say auto status
 /say clipboard
 /say stop
-/say focus
-/say queue
 
 $say
 $say next
@@ -70,8 +76,6 @@ $say auto off
 $say auto status
 $say clipboard
 $say stop
-$say focus
-$say queue
 ```
 
 In a terminal:
@@ -84,8 +88,6 @@ codex-say --clipboard
 codex-say auto on
 codex-say auto speed 1.5x
 codex-say auto status
-codex-say focus
-codex-say queue
 codex-say auto off
 codex-say --stop
 ```
@@ -120,15 +122,11 @@ Check or disable it:
 
 Automatic mode is thread-scoped. It watches the local Codex transcript, remembers the last line it already handled, and only speaks future `final_answer` messages. `/say stop` stops the current voice and pending one-shot `next` watchers; `/say auto off` disables automatic future answers.
 
-When multiple Codex threads have automatic mode on, responses are queued locally per thread. Only the active thread is allowed to speak, so a background thread finishing should not interrupt the thread you are listening to. Speech is chunked, so a focus change or stop can resume near the interrupted chunk later instead of replaying the whole answer.
+The current plugin keeps speech local by default. A future companion app can add a visual progress indicator and richer pause/resume using macOS `AVSpeechSynthesizer`; the plain `say` command does not expose word-level progress.
 
-Today, Codex Desktop does not expose a public local focus event to skills. `codex-say focus` marks the current thread active and drains its queued responses. The helper also has an internal `--set-active-thread` hook so a future Codex/plugin focus signal can drive this without changing the queue design.
+## Why not Whisper?
 
-Inspect queued automatic responses:
-
-```text
-/say queue
-```
+Whisper is speech-to-text: it turns audio into text. This plugin needs text-to-speech: it turns Codex text into audio. OpenAI text-to-speech can do that, but it requires an API key and API billing, so the default plugin uses local macOS speech instead.
 
 ## Token Note
 

@@ -6,7 +6,7 @@ repo_root="$(
   pwd
 )"
 
-skill_src="$repo_root/say"
+skill_src="$repo_root/skills/say"
 skill_dest="${CODEX_HOME:-$HOME/.codex}/skills/say"
 bin_dir="$HOME/.local/bin"
 

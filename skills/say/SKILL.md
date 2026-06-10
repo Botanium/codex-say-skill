@@ -23,10 +23,6 @@ Command naming: `/say` and `$say` are Codex chat invocations. `codex-say` is the
 - If the user asks to change automatic read-aloud speed, run one of:
   `scripts/codex-say auto speed 1.5x`
   `scripts/codex-say auto rate 220`
-- If the user asks to make the current thread active for queued automatic speech, run:
-  `scripts/codex-say focus`
-- If the user asks what automatic speech is waiting to read, run:
-  `scripts/codex-say queue`
 - If the user asks to stop speech, run:
   `scripts/codex-say --stop`
   This stops active speech plus any pending `next` watcher. It does not disable automatic future answers; use `auto off` for that.
@@ -83,8 +79,6 @@ codex-say auto off
 codex-say auto status
 codex-say auto speed 1.5x
 codex-say auto rate 220
-codex-say focus
-codex-say queue
 codex-say --next --timeout 240
 codex-say --latest
 codex-say --clipboard
@@ -104,11 +98,7 @@ Stop removes active speech and pending one-shot `next` watchers. It intentionall
 
 `next` is one-shot: after it reads one final answer or times out, its watcher removes its own launchd label and exits. It should not read the same answer again.
 
-Automatic mode is thread-scoped: it stores local state in `~/.local/state/codex-say`, remembers the transcript cursor, and handles each future final answer once.
-
-Automatic mode uses a local active-thread queue. Background threads queue their final answers instead of speaking over the active thread. `codex-say focus` marks the current thread active and drains queued responses for that thread. Speech is chunked so a stop or active-thread change can resume near the interrupted chunk later.
-
-Codex Desktop currently does not expose a public local click/focus event to skills. The helper includes an internal `--set-active-thread` hook for future integration; until that exists, use `focus` as the reliable fallback when a queued background thread should start reading.
+Automatic mode is thread-scoped: it stores local state in `~/.local/state/codex-say`, remembers the transcript cursor, and reads each future final answer once.
 
 Code blocks are skipped silently by default to preserve natural listening flow. Inline code remains readable because command names, flags, and file paths are often meaningful.
 
@@ -120,9 +110,7 @@ For the lowest-token workflow, tell the user:
 2. Add `$say next` or `/say next` to a prompt when the user wants the answer currently being generated to be read automatically.
 3. Use `$say auto on` or `/say auto on` when the user wants every future final answer in the current thread read aloud.
 4. Disable automatic mode with `$say auto off` or `/say auto off`.
-5. Use `$say focus` or `/say focus` to mark the current thread active and drain queued background responses.
-6. Use `$say queue` or `/say queue` to inspect queued automatic responses.
-7. If that is not available, copy the chat output or report text and invoke `$say clipboard` or `/say clipboard`.
-8. Stop current speech with `/say stop`, `$say stop`, or `saychat --stop`.
+5. If that is not available, copy the chat output or report text and invoke `$say clipboard` or `/say clipboard`.
+6. Stop current speech with `/say stop`, `$say stop`, or `saychat --stop`.
 
 For a completely model-free workflow, recommend macOS Spoken Content: select text on screen and use the system "Speak selected text" shortcut, commonly Option-Esc when enabled.

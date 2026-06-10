@@ -16,11 +16,6 @@ force_clipboard=0
 force_latest=0
 timeout=180
 auto_action=""
-focus_current=0
-queue_status=0
-drain_queue_internal=0
-drain_queue_label=""
-set_active_thread=""
 watch_next_internal=0
 watch_auto_internal=0
 watch_session_path=""
@@ -49,8 +44,6 @@ Usage:
   codex-say auto off                Disable automatic read-aloud for this thread
   codex-say auto status             Show automatic read-aloud status
   codex-say auto speed 1.5x         Enable or update automatic read-aloud speed
-  codex-say focus                   Mark this Codex thread active and read queued auto speech
-  codex-say queue                   Show queued automatic read-aloud responses
   pbpaste | codex-say               Read piped text aloud
 
 Useful options:
@@ -63,8 +56,6 @@ Useful options:
       --next                        Wait for and read next assistant message
       --timeout N                   Timeout in seconds for --next, default 180
       --auto on|off|status          Manage thread automatic read-aloud
-      --focus                       Mark this Codex thread active
-      --queue-status                Show queued automatic read-aloud responses
       --raw                         Do not clean Markdown before speaking
       --foreground                  Wait until speech finishes
       --save PATH                   Save speech audio instead of playing
@@ -164,19 +155,6 @@ while [[ $# -gt 0 ]]; do
       watch_auto_label="${3:-}"
       shift 3
       ;;
-    --drain-queue-internal)
-      drain_queue_internal=1
-      drain_queue_label="${2:-}"
-      if [[ $# -ge 2 && -n "${2:-}" && "${2:-}" != --* ]]; then
-        shift 2
-      else
-        shift
-      fi
-      ;;
-    --set-active-thread)
-      set_active_thread="${2:?Missing thread id for $1}"
-      shift 2
-      ;;
     --auto)
       auto_action="${2:-status}"
       if [[ "$auto_action" == "speed" ]]; then
@@ -204,14 +182,6 @@ while [[ $# -gt 0 ]]; do
       else
         shift "$(( $# >= 2 ? 2 : 1 ))"
       fi
-      ;;
-    --focus|focus)
-      focus_current=1
-      shift
-      ;;
-    --queue-status|queue)
-      queue_status=1
-      shift
       ;;
     --raw)
       raw=1
@@ -333,26 +303,6 @@ sys.stdout.write(max(paths, key=os.path.getmtime))
 PY
 }
 
-codex_say_state_root() {
-  printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/codex-say"
-}
-
-codex_say_global_state_dir() {
-  printf '%s\n' "$(codex_say_state_root)/global"
-}
-
-codex_say_queue_dir() {
-  printf '%s\n' "$(codex_say_global_state_dir)/queue"
-}
-
-codex_say_speaker_lock_dir() {
-  printf '%s\n' "$(codex_say_global_state_dir)/speaker.lock"
-}
-
-codex_say_stop_marker_path() {
-  printf '%s\n' "$(codex_say_global_state_dir)/stop_requested_at"
-}
-
 auto_state_dir_for_thread() {
   /usr/bin/python3 - <<'PY'
 import hashlib
@@ -367,9 +317,7 @@ if not thread_id:
 digest = hashlib.sha1(thread_id.encode("utf-8")).hexdigest()[:8]
 safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", thread_id).strip(".-_") or "thread"
 safe = safe[:72]
-home = os.path.expanduser("~")
-state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(home, ".local", "state")
-sys.stdout.write(os.path.join(state_home, "codex-say", f"{safe}-{digest}"))
+sys.stdout.write(os.path.join(os.path.expanduser("~"), ".local", "state", "codex-say", f"{safe}-{digest}"))
 PY
 }
 
@@ -716,428 +664,6 @@ for sig in (signal.SIGTERM, signal.SIGKILL):
 PY
 }
 
-current_thread_id() {
-  thread_id="${CODEX_THREAD_ID:-}"
-  if [[ -z "$thread_id" ]]; then
-    return 1
-  fi
-  printf '%s\n' "$thread_id"
-}
-
-thread_id_from_session_path() {
-  session_path="${1:-}"
-  /usr/bin/python3 - "$session_path" <<'PY'
-import os
-import re
-import sys
-
-name = os.path.basename(sys.argv[1])
-match = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$", name)
-if not match:
-    sys.exit(1)
-sys.stdout.write(match.group(1))
-PY
-}
-
-read_active_thread_id() {
-  /bin/cat "$(codex_say_global_state_dir)/active_thread_id" 2>/dev/null || true
-}
-
-request_speech_stop() {
-  global_dir="$(codex_say_global_state_dir)"
-  /bin/mkdir -p "$global_dir"
-  /usr/bin/python3 - <<'PY' > "$(codex_say_stop_marker_path)"
-import time
-print(time.time_ns())
-PY
-}
-
-speech_stop_marker_value() {
-  /bin/cat "$(codex_say_stop_marker_path)" 2>/dev/null || true
-}
-
-mark_thread_active() {
-  thread_id="${1:-}"
-  session_path="${2:-}"
-  if [[ -z "$thread_id" ]]; then
-    return 0
-  fi
-
-  global_dir="$(codex_say_global_state_dir)"
-  /bin/mkdir -p "$global_dir"
-  old_thread_id="$(read_active_thread_id)"
-
-  printf '%s\n' "$thread_id" > "$global_dir/active_thread_id.tmp"
-  /bin/mv "$global_dir/active_thread_id.tmp" "$global_dir/active_thread_id"
-  if [[ -n "$session_path" ]]; then
-    printf '%s\n' "$session_path" > "$global_dir/active_session_path.tmp"
-    /bin/mv "$global_dir/active_session_path.tmp" "$global_dir/active_session_path"
-  fi
-  /bin/date +%s > "$global_dir/active_updated_at"
-
-  if [[ -n "$old_thread_id" && "$old_thread_id" != "$thread_id" ]]; then
-    cleanup_codex_say_processes 1 0
-  fi
-}
-
-mark_current_thread_active() {
-  thread_id="$(current_thread_id 2>/dev/null)" || return 0
-  session_path="$(current_codex_session_path 2>/dev/null || true)"
-  mark_thread_active "$thread_id" "$session_path"
-}
-
-queue_item_dir_for_response() {
-  queue_dir="${1:?Missing queue dir}"
-  thread_id="${2:?Missing thread id}"
-  line_number="${3:?Missing transcript line number}"
-  session_path="${4:-}"
-  /usr/bin/python3 - "$queue_dir" "$thread_id" "$line_number" "$session_path" <<'PY'
-import hashlib
-import os
-import re
-import sys
-
-queue_dir, thread_id, line_number, session_path = sys.argv[1:5]
-safe_thread = re.sub(r"[^A-Za-z0-9_.-]+", "-", thread_id).strip(".-_") or "thread"
-safe_thread = safe_thread[:72]
-digest = hashlib.sha1(f"{thread_id}\0{line_number}\0{session_path}".encode("utf-8")).hexdigest()[:12]
-sys.stdout.write(os.path.join(queue_dir, f"{safe_thread}-{line_number}-{digest}"))
-PY
-}
-
-queue_auto_response() {
-  thread_id="${1:?Missing thread id}"
-  session_path="${2:-}"
-  line_number="${3:-0}"
-  text="${4:-}"
-  item_rate="${5:-$rate}"
-  item_voice="${6:-}"
-
-  if [[ -z "${text//[[:space:]]/}" ]]; then
-    return 0
-  fi
-
-  queue_dir="$(codex_say_queue_dir)"
-  /bin/mkdir -p "$queue_dir"
-  item_dir="$(queue_item_dir_for_response "$queue_dir" "$thread_id" "$line_number" "$session_path")"
-
-  if [[ -f "$item_dir/status" ]]; then
-    status="$(/bin/cat "$item_dir/status" 2>/dev/null || true)"
-    if [[ "$status" != "writing" ]]; then
-      return 0
-    fi
-  fi
-
-  /bin/mkdir -p "$item_dir"
-  printf 'writing\n' > "$item_dir/status"
-  printf '%s\n' "$thread_id" > "$item_dir/thread_id"
-  printf '%s\n' "$session_path" > "$item_dir/session_path"
-  printf '%s\n' "$line_number" > "$item_dir/line"
-  printf '%s\n' "$item_rate" > "$item_dir/rate"
-  printf '%s\n' "$item_voice" > "$item_dir/voice"
-  /bin/date +%s > "$item_dir/created_at"
-  printf '0\n' > "$item_dir/chunk_index"
-  /bin/rm -rf "$item_dir/chunks"
-  printf '%s\n' "$text" > "$item_dir/text"
-  printf 'pending\n' > "$item_dir/status"
-}
-
-next_queue_item_for_thread() {
-  queue_dir="$(codex_say_queue_dir)"
-  thread_id="${1:-}"
-  /usr/bin/python3 - "$queue_dir" "$thread_id" <<'PY'
-import os
-import sys
-
-queue_dir, thread_id = sys.argv[1:3]
-
-def read_text(path, default=""):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
-    except FileNotFoundError:
-        return default
-
-if not thread_id or not os.path.isdir(queue_dir):
-    sys.exit(0)
-
-items = []
-for name in os.listdir(queue_dir):
-    path = os.path.join(queue_dir, name)
-    if not os.path.isdir(path):
-        continue
-    status = read_text(os.path.join(path, "status"))
-    if status not in {"pending", "speaking"}:
-        continue
-    if read_text(os.path.join(path, "thread_id")) != thread_id:
-        continue
-    try:
-        created_at = int(read_text(os.path.join(path, "created_at"), "0") or "0")
-    except ValueError:
-        created_at = 0
-    try:
-        line_number = int(read_text(os.path.join(path, "line"), "0") or "0")
-    except ValueError:
-        line_number = 0
-    items.append((created_at, line_number, path))
-
-for _, _, path in sorted(items):
-    print(path)
-PY
-}
-
-prepare_queue_chunks() {
-  item_dir="${1:?Missing queue item dir}"
-  chunks_dir="$item_dir/chunks"
-  if [[ -d "$chunks_dir" ]]; then
-    return 0
-  fi
-
-  tmp_chunks="$item_dir/chunks.tmp.$$"
-  /bin/rm -rf "$tmp_chunks"
-  /bin/mkdir -p "$tmp_chunks"
-  /usr/bin/python3 - "$item_dir/text" "$tmp_chunks" <<'PY'
-import os
-import re
-import sys
-
-text_path, chunks_dir = sys.argv[1:3]
-with open(text_path, "r", encoding="utf-8") as handle:
-    text = handle.read().strip()
-
-paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", text) if part.strip()]
-chunks = []
-
-def append_piece(piece):
-    piece = re.sub(r"\s+", " ", piece).strip()
-    if not piece:
-        return
-    max_chars = 420
-    if len(piece) <= max_chars:
-        chunks.append(piece)
-        return
-    words = piece.split()
-    current = []
-    current_len = 0
-    for word in words:
-        extra = len(word) + (1 if current else 0)
-        if current and current_len + extra > max_chars:
-            chunks.append(" ".join(current))
-            current = [word]
-            current_len = len(word)
-        else:
-            current.append(word)
-            current_len += extra
-    if current:
-        chunks.append(" ".join(current))
-
-for paragraph in paragraphs or [text]:
-    sentences = re.split(r"(?<=[.!?])\s+", paragraph)
-    current = []
-    current_len = 0
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        extra = len(sentence) + (1 if current else 0)
-        if current and current_len + extra > 420:
-            append_piece(" ".join(current))
-            current = [sentence]
-            current_len = len(sentence)
-        else:
-            current.append(sentence)
-            current_len += extra
-    if current:
-        append_piece(" ".join(current))
-
-if not chunks and text:
-    chunks = [text]
-
-for index, chunk in enumerate(chunks):
-    with open(os.path.join(chunks_dir, f"{index:06d}.txt"), "w", encoding="utf-8") as handle:
-        handle.write(chunk)
-        handle.write("\n")
-PY
-  /bin/mv "$tmp_chunks" "$chunks_dir"
-}
-
-speak_queue_item() {
-  item_dir="${1:?Missing queue item dir}"
-  thread_id="$(/bin/cat "$item_dir/thread_id" 2>/dev/null || true)"
-  item_rate="$(/bin/cat "$item_dir/rate" 2>/dev/null || printf '%s' "$rate")"
-  item_voice="$(/bin/cat "$item_dir/voice" 2>/dev/null || true)"
-
-  if [[ -z "$thread_id" ]]; then
-    /bin/rm -rf "$item_dir"
-    return 0
-  fi
-
-  prepare_queue_chunks "$item_dir"
-  stop_marker_before="$(speech_stop_marker_value)"
-
-  while true; do
-    if [[ "$(read_active_thread_id)" != "$thread_id" ]]; then
-      printf 'pending\n' > "$item_dir/status"
-      return 1
-    fi
-    if [[ "$(speech_stop_marker_value)" != "$stop_marker_before" ]]; then
-      printf 'pending\n' > "$item_dir/status"
-      return 1
-    fi
-
-    chunk_index="$(/bin/cat "$item_dir/chunk_index" 2>/dev/null || printf '0')"
-    if [[ ! "$chunk_index" =~ ^[0-9]+$ ]]; then
-      chunk_index=0
-    fi
-
-    chunk_file="$(/bin/ls "$item_dir/chunks"/*.txt 2>/dev/null | /usr/bin/sort | /usr/bin/sed -n "$((chunk_index + 1))p")"
-    if [[ -z "$chunk_file" ]]; then
-      printf 'done\n' > "$item_dir/status"
-      /bin/rm -rf "$item_dir"
-      return 0
-    fi
-
-    printf 'speaking\n' > "$item_dir/status"
-    if [[ -n "$item_voice" ]]; then
-      /usr/bin/say -v "$item_voice" -r "$item_rate" -f "$chunk_file" || true
-    else
-      /usr/bin/say -r "$item_rate" -f "$chunk_file" || true
-    fi
-
-    if [[ "$(speech_stop_marker_value)" != "$stop_marker_before" ]]; then
-      printf 'pending\n' > "$item_dir/status"
-      return 1
-    fi
-    if [[ "$(read_active_thread_id)" != "$thread_id" ]]; then
-      printf 'pending\n' > "$item_dir/status"
-      return 1
-    fi
-
-    printf '%s\n' "$((chunk_index + 1))" > "$item_dir/chunk_index"
-  done
-}
-
-drain_active_queue() {
-  (
-    global_dir="$(codex_say_global_state_dir)"
-    lock_dir="$(codex_say_speaker_lock_dir)"
-    /bin/mkdir -p "$global_dir"
-    lock_attempt=0
-    while ! /bin/mkdir "$lock_dir" 2>/dev/null; do
-      lock_pid="$(/bin/cat "$lock_dir/pid" 2>/dev/null || true)"
-      if [[ -n "$lock_pid" ]] && ! /bin/kill -0 "$lock_pid" 2>/dev/null; then
-        /bin/rm -rf "$lock_dir"
-      else
-        lock_attempt="$((lock_attempt + 1))"
-        if [[ "$lock_attempt" -ge 20 ]]; then
-          exit 0
-        fi
-        /bin/sleep 0.25
-      fi
-    done
-    trap '/bin/rm -rf "$lock_dir"' EXIT
-    printf '%s\n' "$$" > "$lock_dir/pid"
-
-    while true; do
-      active_thread_id="$(read_active_thread_id)"
-      if [[ -z "$active_thread_id" ]]; then
-        exit 0
-      fi
-      item_dir="$(next_queue_item_for_thread "$active_thread_id" | /usr/bin/sed -n '1p')"
-      if [[ -z "$item_dir" ]]; then
-        exit 0
-      fi
-      if ! speak_queue_item "$item_dir"; then
-        exit 0
-      fi
-    done
-  )
-}
-
-launch_drain_active_queue() {
-  label="com.botanium.codex-say-drain.$(/bin/date +%s).$$.${RANDOM:-0}"
-  /bin/launchctl submit -l "$label" -- /bin/bash -c '
-    label="$1"
-    script="$2"
-    trap "/bin/launchctl remove \"$label\" >/dev/null 2>&1 || true" EXIT
-    /bin/bash "$script" --drain-queue-internal ""
-  ' _ "$label" "$self_path" >/dev/null 2>&1 || (
-    /bin/bash "$self_path" --drain-queue-internal "" >/dev/null 2>&1 &
-  )
-}
-
-show_queue_status() {
-  queue_dir="$(codex_say_queue_dir)"
-  active_thread_id="$(read_active_thread_id)"
-  /usr/bin/python3 - "$queue_dir" "$active_thread_id" <<'PY'
-import os
-import sys
-
-queue_dir, active_thread_id = sys.argv[1:3]
-
-def read_text(path, default=""):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
-    except FileNotFoundError:
-        return default
-
-pending = []
-if os.path.isdir(queue_dir):
-    for name in os.listdir(queue_dir):
-        path = os.path.join(queue_dir, name)
-        if not os.path.isdir(path):
-            continue
-        status = read_text(os.path.join(path, "status"))
-        if status not in {"pending", "speaking"}:
-            continue
-        thread_id = read_text(os.path.join(path, "thread_id"))
-        line = read_text(os.path.join(path, "line"), "?")
-        created_at = read_text(os.path.join(path, "created_at"), "?")
-        pending.append((thread_id, line, created_at, status))
-
-if not pending:
-    print("No queued auto read-aloud responses.")
-else:
-    print(f"Queued auto read-aloud responses: {len(pending)}")
-    for thread_id, line, created_at, status in sorted(pending, key=lambda item: (item[2], item[1])):
-        marker = " active" if active_thread_id and thread_id == active_thread_id else ""
-        print(f"- {thread_id} line {line}: {status}{marker}")
-
-if active_thread_id:
-    print(f"Active thread: {active_thread_id}")
-else:
-    print("Active thread: not set")
-PY
-}
-
-clear_queue_for_thread() {
-  thread_id="${1:-}"
-  queue_dir="$(codex_say_queue_dir)"
-  if [[ -z "$thread_id" || ! -d "$queue_dir" ]]; then
-    return 0
-  fi
-  /usr/bin/python3 - "$queue_dir" "$thread_id" <<'PY'
-import os
-import shutil
-import sys
-
-queue_dir, thread_id = sys.argv[1:3]
-
-def read_text(path, default=""):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
-    except FileNotFoundError:
-        return default
-
-for name in os.listdir(queue_dir):
-    path = os.path.join(queue_dir, name)
-    if os.path.isdir(path) and read_text(os.path.join(path, "thread_id")) == thread_id:
-        shutil.rmtree(path, ignore_errors=True)
-PY
-}
-
 show_auto_status() {
   state_dir="$(auto_state_dir_for_thread 2>/dev/null)" || {
     echo "Auto read-aloud is off: no current Codex thread was found."
@@ -1173,18 +699,9 @@ show_auto_status() {
   if [[ -n "$saved_cursor" ]]; then
     echo "Cursor line: $saved_cursor"
   fi
-  active_thread_id="$(read_active_thread_id)"
-  if [[ -n "$active_thread_id" ]]; then
-    echo "Active auto thread: $active_thread_id"
-  fi
-  show_queue_status
 }
 
 start_auto_read_aloud() {
-  thread_id="$(current_thread_id)" || {
-    echo "Auto mode needs a current Codex thread." >&2
-    exit 1
-  }
   session_path="$(current_codex_session_path)" || {
     echo "Could not find the current Codex session transcript for auto mode." >&2
     exit 1
@@ -1218,9 +735,6 @@ start_auto_read_aloud() {
   printf '%s\n' "$voice" > "$state_dir/voice"
   printf '%s\n' "$raw" > "$state_dir/raw"
   printf '%s\n' "$label" > "$state_dir/label"
-  printf '%s\n' "$thread_id" > "$state_dir/thread_id"
-
-  mark_thread_active "$thread_id" "$session_path"
 
   if ! /bin/launchctl submit -l "$label" -- "$self_path" --watch-auto-internal "$state_dir" "$label"; then
     /bin/rm -f "$state_dir/enabled"
@@ -1228,7 +742,6 @@ start_auto_read_aloud() {
     exit 1
   fi
 
-  launch_drain_active_queue
   echo "Auto read-aloud is on for this Codex thread at ${rate} wpm. Disable with: codex-say auto off"
 }
 
@@ -1237,17 +750,13 @@ stop_auto_read_aloud() {
   label="$(auto_launch_label_for_thread 2>/dev/null || true)"
 
   if [[ -n "$state_dir" && -n "$label" ]]; then
-    thread_id="$(current_thread_id 2>/dev/null || true)"
     /bin/rm -f "$state_dir/enabled" 2>/dev/null || true
     /bin/launchctl remove "$label" >/dev/null 2>&1 || true
     kill_auto_watcher_for_state "$state_dir" || true
     /bin/rm -rf "$state_dir" 2>/dev/null || true
-    clear_queue_for_thread "$thread_id"
-    request_speech_stop
     cleanup_codex_say_processes 1 0
     echo "Auto read-aloud is off for this Codex thread."
   else
-    request_speech_stop
     cleanup_codex_say_processes 1 1
     echo "Auto read-aloud is off."
   fi
@@ -1269,22 +778,20 @@ run_auto_watcher() {
     current_rate="$(/bin/cat "$watch_auto_state_dir/rate" 2>/dev/null || printf '%s' "$rate")"
     current_voice="$(/bin/cat "$watch_auto_state_dir/voice" 2>/dev/null || true)"
     current_raw="$(/bin/cat "$watch_auto_state_dir/raw" 2>/dev/null || printf '0')"
-    current_session_path="$(/bin/cat "$watch_auto_state_dir/session_path" 2>/dev/null || true)"
-    current_line="$(/bin/cat "$watch_auto_state_dir/cursor" 2>/dev/null || printf '0')"
-    current_thread_id="$(/bin/cat "$watch_auto_state_dir/thread_id" 2>/dev/null || true)"
-    if [[ -z "$current_thread_id" && -n "$current_session_path" ]]; then
-      current_thread_id="$(thread_id_from_session_path "$current_session_path" 2>/dev/null || true)"
-    fi
-    if [[ -z "$current_thread_id" ]]; then
-      continue
-    fi
 
     if [[ "$current_raw" != "1" ]]; then
       text="$(printf '%s' "$text" | clean_markdown_text)"
     fi
 
-    queue_auto_response "$current_thread_id" "$current_session_path" "$current_line" "$text" "$current_rate" "$current_voice"
-    drain_active_queue
+    tmp_file="$(/usr/bin/mktemp -t codex-say-auto)"
+    printf '%s\n' "$text" > "$tmp_file"
+    cleanup_codex_say_processes 1 0
+    if [[ -n "$current_voice" ]]; then
+      /usr/bin/say -v "$current_voice" -r "$current_rate" -f "$tmp_file" || true
+    else
+      /usr/bin/say -r "$current_rate" -f "$tmp_file" || true
+    fi
+    /bin/rm -f "$tmp_file"
   done
 }
 
@@ -1298,34 +805,8 @@ case "$auto_action" in
     ;;
 esac
 
-if [[ "$drain_queue_internal" -eq 1 ]]; then
-  if [[ -n "$drain_queue_label" ]]; then
-    trap '/bin/launchctl remove "$drain_queue_label" >/dev/null 2>&1 || true' EXIT
-  fi
-  drain_active_queue
-  exit 0
-fi
-
-if [[ -n "$set_active_thread" ]]; then
-  mark_thread_active "$set_active_thread" ""
-  launch_drain_active_queue
-  exit 0
-fi
-
 if [[ "$watch_auto_internal" -eq 1 ]]; then
   run_auto_watcher
-  exit 0
-fi
-
-if [[ "$focus_current" -eq 1 ]]; then
-  mark_current_thread_active
-  launch_drain_active_queue
-  echo "This Codex thread is active for auto read-aloud."
-  exit 0
-fi
-
-if [[ "$queue_status" -eq 1 ]]; then
-  show_queue_status
   exit 0
 fi
 
@@ -1341,20 +822,16 @@ elif [[ "$auto_action" == "on" ]]; then
 fi
 
 if [[ "$stop" -eq 1 ]]; then
-  mark_current_thread_active
-  request_speech_stop
   cleanup_codex_say_processes 1 0
   echo "Stopped macOS speech."
   exit 0
 fi
 
 if [[ "$next" -eq 1 ]]; then
-  mark_current_thread_active
   if auto_enabled_current_thread; then
     echo "Auto read-aloud is already on for this thread; it will speak the next final answer."
     exit 0
   fi
-  request_speech_stop
   cleanup_codex_say_processes 1 0
   session_path="$(current_codex_session_path)" || {
     echo "Could not find the current Codex session transcript for --next." >&2
@@ -1374,8 +851,6 @@ if [[ "$list_voices" -eq 1 ]]; then
   /usr/bin/say -v '?'
   exit 0
 fi
-
-mark_current_thread_active
 
 text=""
 source_desc="clipboard"
@@ -1433,7 +908,6 @@ if [[ -z "${text//[[:space:]]/}" ]]; then
 fi
 
 if [[ "$watch_next_internal" -eq 0 ]]; then
-  request_speech_stop
   cleanup_codex_say_processes 1 0
 fi
 

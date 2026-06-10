@@ -1,0 +1,93 @@
+---
+name: say
+description: Local no-key read-aloud workflow for Codex/ChatGPT output, selected text, clipboard text, and Markdown files using macOS speech instead of sending large content through the model. Use when the user invokes $say, asks for /say or /read behavior, wants chat output read aloud, wants a .md report spoken, wants text-to-speech without an API key, or wants to avoid token use while listening to generated reports.
+---
+
+# Say
+
+Use local macOS speech for read-aloud tasks. Keep the model out of the content path whenever possible: read from the clipboard, a file path, or the local Codex transcript directly, not by pasting or loading large text into the conversation.
+
+Use the bundled helper at `scripts/codex-say` relative to this skill folder. If the user installed the helper globally, `codex-say`, `saychat`, and `readchat` are also available on PATH.
+
+## Routing
+
+- If the user asks to stop speech, run:
+  `scripts/codex-say --stop`
+  This stops active speech plus any pending `next` watcher.
+- If the user asks to read the answer to the current prompt, or invokes `$say next`, `/say next`, `$say` with `next`, or `/read next`, run:
+  `scripts/codex-say next`
+  Do this before producing the final answer so the local watcher can speak the next `phase=final_answer` message after it is written to the Codex transcript.
+- If the user provides no text or path, run:
+  `scripts/codex-say`
+  Inside Codex this reads the latest final assistant answer from the local thread transcript when available, then falls back to any latest assistant message and finally the macOS clipboard. Outside Codex it reads the clipboard.
+- If the user asks to read copied text or clipboard text, run:
+  `scripts/codex-say --clipboard`
+- If the user provides a file path, and the path exists, run:
+  `scripts/codex-say -f <path>`
+- If the user provides short inline text, run:
+  `scripts/codex-say -- <text>`
+- If the user provides long inline text, warn briefly that it has already consumed tokens and suggest the clipboard/file flow next time. Still speak it if they explicitly asked.
+
+## Token Rules
+
+- Do not send a commentary/progress message before running the helper; that short message can become the latest assistant response and be spoken instead of the useful answer.
+- For `next`, run `scripts/codex-say next` before the final response and avoid any further commentary messages before final.
+- Do not `cat`, `pbpaste`, or otherwise print large content into the model context just to read it aloud.
+- Do not summarize, rewrite, or clean the content unless the user asks for that specifically.
+- Prefer clipboard reading for chat output. The user can copy the latest response, then invoke `$say` or `/say` with no arguments.
+- If `CODEX_THREAD_ID` is present, `codex-say` can read the latest assistant response from the local transcript without copying or exposing the content to the model.
+- For `next`, the watcher must ignore commentary/progress messages and wait for `phase=final_answer`.
+- Prefer `codex-say -f <path>` for Markdown reports.
+- Keep the assistant response tiny after starting or stopping speech.
+
+## Commands
+
+The bundled helper is:
+
+```bash
+scripts/codex-say
+```
+
+If installed globally, convenience commands are:
+
+```bash
+saychat
+readchat
+```
+
+Useful options:
+
+```bash
+codex-say --stop
+codex-say next
+codex-say --next --timeout 240
+codex-say --latest
+codex-say --clipboard
+codex-say clipboard
+codex-say --speed 1.5x "read this faster"
+codex-say --list-voices
+codex-say -r 150
+codex-say -f report.md
+codex-say --save report.aiff -f report.md
+```
+
+Background speech is handed to macOS `launchctl` so it survives Codex shell cleanup. Use `--foreground` only for diagnostics or when the user explicitly wants the command to wait.
+
+Speech is exclusive by default: starting a new read-aloud command cancels active speech and pending `next` watchers first. This prevents stacked voices.
+
+Stop also removes stale `com.botanium.codex-say...` launchd jobs; this matters because old launchd labels can restart speech after the visible `say` process is killed.
+
+`next` is one-shot: after it reads one final answer or times out, its watcher removes its own launchd label and exits. It should not read the same answer again.
+
+Code blocks are skipped silently by default to preserve natural listening flow. Inline code remains readable because command names, flags, and file paths are often meaningful.
+
+## User Guidance
+
+For the lowest-token workflow, tell the user:
+
+1. Invoke `$say` or `/say` with no pasted text to read the latest Codex response when available.
+2. Add `$say next` or `/say next` to a prompt when the user wants the answer currently being generated to be read automatically.
+3. If that is not available, copy the chat output or report text and invoke `$say clipboard` or `/say clipboard`.
+4. Stop speech with `/say stop`, `$say stop`, or `saychat --stop`.
+
+For a completely model-free workflow, recommend macOS Spoken Content: select text on screen and use the system "Speak selected text" shortcut, commonly Option-Esc when enabled.

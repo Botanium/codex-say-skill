@@ -39,9 +39,22 @@ Make sure `~/.local/bin` is on your `PATH`.
 
 ## Usage
 
-In Codex:
+## Which Command Should I Use?
+
+- Use `/say` or `$say` inside Codex chat.
+- Use `codex-say` in Terminal.
+- The skill itself runs `scripts/codex-say` under the hood.
+
+So `codex-say` is the shell helper. `/say` is the chat shortcut you type to make Codex run that helper for you.
+
+In Codex chat:
 
 ```text
+/say
+/say next
+/say clipboard
+/say stop
+
 $say
 $say next
 $say clipboard

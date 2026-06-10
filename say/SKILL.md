@@ -9,6 +9,8 @@ Use local macOS speech for read-aloud tasks. Keep the model out of the content p
 
 Use the bundled helper at `scripts/codex-say` relative to this skill folder. If the user installed the helper globally, `codex-say`, `saychat`, and `readchat` are also available on PATH.
 
+Command naming: `/say` and `$say` are Codex chat invocations. `codex-say` is the Terminal/helper command that the skill runs under the hood. In user-facing Codex chat guidance, prefer `/say` or `$say`; in shell examples, use `codex-say`.
+
 ## Routing
 
 - If the user asks to stop speech, run:

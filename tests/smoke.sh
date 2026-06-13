@@ -45,6 +45,19 @@ if "$helper" --dry-run -f "$citation_sample" | grep -qi "memory"; then
 fi
 rm -f "$citation_sample"
 
+codeblock_sample="$(mktemp -t codex-say-codeblock-sample)"
+cat > "$codeblock_sample" <<'EOF'
+Intro.
+
+```bash
+codex-say default rate 210
+```
+
+Done.
+EOF
+"$helper" --dry-run -f "$codeblock_sample" | grep -q "Would speak 41 characters"
+rm -f "$codeblock_sample"
+
 hardcoded_home_pattern="$(printf '/%s/' 'Users')"
 if grep -R "$hardcoded_home_pattern" "$repo_root/skills/say" >/dev/null; then
   echo "Found local hardcoded path in skill files" >&2

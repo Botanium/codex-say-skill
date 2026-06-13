@@ -108,7 +108,7 @@ Stop removes active speech and pending one-shot `next` watchers. It intentionall
 
 Automatic mode is thread-scoped: it stores local state in `~/.local/state/codex-say`, remembers the transcript cursor, and reads each future final answer once.
 
-Code blocks are skipped silently by default to preserve natural listening flow. Inline code remains readable because command names, flags, and file paths are often meaningful.
+Fenced code blocks are read as their contents while the backtick fences and language labels are skipped. Inline code remains readable because command names, flags, and file paths are often meaningful.
 
 ## User Guidance
 

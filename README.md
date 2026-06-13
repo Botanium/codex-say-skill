@@ -12,7 +12,7 @@ This skill uses macOS `say` locally, so speech does not send the spoken text thr
 - Read clipboard text, inline text, or Markdown files.
 - Save a default speech rate such as `210 wpm`.
 - Use speed multipliers such as `--speed 1x`, `--speed 1.5x`, and `--speed 2x`.
-- Skip fenced code blocks silently for a more natural listening flow.
+- Read fenced code block contents while skipping the backtick fences.
 - Stop active speech and stale launchd jobs with one command.
 
 ## Install as a Codex plugin

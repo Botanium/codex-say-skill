@@ -13,6 +13,7 @@ This skill uses macOS `say` locally, so speech does not send the spoken text thr
 - Save a default speech rate such as `210 wpm`.
 - Use speed multipliers such as `--speed 1x`, `--speed 1.5x`, and `--speed 2x`.
 - Read fenced code block contents while skipping the backtick fences.
+- Skip noisy metadata such as memory citations and Git commit hashes.
 - Stop active speech and stale launchd jobs with one command.
 
 ## Install as a Codex plugin
@@ -134,6 +135,22 @@ Check or disable it:
 Automatic mode is thread-scoped. It watches the local Codex transcript, remembers the last line it already handled, and only speaks future `final_answer` messages. `/say stop` stops the current voice and pending one-shot `next` watchers; `/say auto off` disables automatic future answers.
 
 The current plugin keeps speech local by default. A future companion app can add a visual progress indicator and richer pause/resume using macOS `AVSpeechSynthesizer`; the plain `say` command does not expose word-level progress.
+
+## Skip Patterns
+
+Codex Say removes noisy text before speaking. Packaged defaults live in:
+
+```bash
+skills/say/config/skip-patterns.txt
+```
+
+That file currently skips Codex memory citations and Git commit hashes. You can add personal skip rules without editing the plugin:
+
+```bash
+~/.config/codex-say/skip-patterns.txt
+```
+
+Each non-empty, non-comment line is a Python regular expression removed before Markdown cleanup.
 
 ## Why not Whisper?
 

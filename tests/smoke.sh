@@ -45,6 +45,19 @@ if "$helper" --dry-run -f "$citation_sample" | grep -qi "memory"; then
 fi
 rm -f "$citation_sample"
 
+commit_sample="$(mktemp -t codex-say-commit-sample)"
+cat > "$commit_sample" <<'EOF'
+Useful answer.
+
+Pushed commit: `c092e74266ce0ca0aaa8d07bd3b93d2e11fe0487`.
+
+c092e74266ce0ca0aaa8d07bd3b93d2e11fe0487
+
+Done.
+EOF
+"$helper" --dry-run -f "$commit_sample" | grep -q "Would speak 21 characters"
+rm -f "$commit_sample"
+
 codeblock_sample="$(mktemp -t codex-say-codeblock-sample)"
 cat > "$codeblock_sample" <<'EOF'
 Intro.

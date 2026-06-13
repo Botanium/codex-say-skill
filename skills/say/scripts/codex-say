@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+self_dir="$(
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+  pwd
+)"
+self_path="$self_dir/$(basename "${BASH_SOURCE[0]}")"
 default_rate_file="${XDG_CONFIG_HOME:-$HOME/.config}/codex-say/default_rate"
+packaged_skip_patterns_file="$self_dir/../config/skip-patterns.txt"
+user_skip_patterns_file="${XDG_CONFIG_HOME:-$HOME/.config}/codex-say/skip-patterns.txt"
 rate=170
 if [[ -f "$default_rate_file" ]]; then
   configured_rate="$(/usr/bin/tr -d '[:space:]' < "$default_rate_file" 2>/dev/null || true)"
@@ -34,10 +41,6 @@ watch_launch_label=""
 watch_auto_state_dir=""
 watch_auto_label=""
 args=()
-self_path="$(
-  cd "$(dirname "${BASH_SOURCE[0]}")"
-  pwd
-)/$(basename "${BASH_SOURCE[0]}")"
 
 usage() {
   cat <<'USAGE'
@@ -555,11 +558,43 @@ while True:
 PY
 }
 
+apply_skip_patterns() {
+  /usr/bin/python3 -c '
+import os
+import re
+import sys
+
+text = sys.stdin.read()
+
+for pattern_path in sys.argv[1:]:
+    if not pattern_path or not os.path.isfile(pattern_path):
+        continue
+    try:
+        with open(pattern_path, "r", encoding="utf-8") as handle:
+            patterns = handle.readlines()
+    except OSError as exc:
+        print(f"Warning: could not read skip patterns from {pattern_path}: {exc}", file=sys.stderr)
+        continue
+
+    for line_number, raw_pattern in enumerate(patterns, 1):
+        pattern = raw_pattern.strip()
+        if not pattern or pattern.startswith("#"):
+            continue
+        try:
+            text = re.sub(pattern, "", text, flags=re.MULTILINE)
+        except re.error as exc:
+            print(
+                f"Warning: invalid skip pattern {pattern_path}:{line_number}: {exc}",
+                file=sys.stderr,
+            )
+
+sys.stdout.write(text)
+' "$packaged_skip_patterns_file" "$user_skip_patterns_file"
+}
+
 clean_markdown_text() {
-  /usr/bin/perl -0pe '
+  apply_skip_patterns | /usr/bin/perl -0pe '
     s/\r\n/\n/g;
-    s/<oai-mem-citation\b[^>]*>.*?<\/oai-mem-citation>//gs;
-    s/^\s*<?\s*\d+\s+memory citations?\s*>?\s*$//mig;
     s/```[^\n]*\n(.*?)```/\n$1\n/gs;
     s/`([^`\n]+)`/$1/g;
     s/!\[([^\]]*)\]\([^)]+\)/$1/g;

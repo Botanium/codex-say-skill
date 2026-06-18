@@ -11,6 +11,21 @@ Use the bundled helper at `scripts/codex-say` relative to this skill folder. If 
 
 Command naming: `/say` and `$say` are Codex chat invocations. `codex-say` is the Terminal/helper command that the skill runs under the hood. In user-facing Codex chat guidance, prefer `/say` or `$say`; in shell examples, use `codex-say`.
 
+## User Guide
+
+Most users only need `/say` inside Codex chat. Type it exactly as `/say`, with no space between `/` and `say`. It is the simple chat shortcut for local read-aloud: Codex runs the bundled helper for you, reads from the local transcript or clipboard, and does not require pasting the answer back into chat.
+
+1. Type `/say` after an answer to read the latest useful Codex response aloud.
+2. Type `/say next` when you want the answer currently being generated, or the next final answer, to be read automatically.
+3. Type `/say auto on` when you want every future final answer in the current thread read aloud.
+4. Type `/say auto off` to turn automatic read-aloud off.
+5. Type `/say clipboard` to read copied text.
+6. Type `/say stop` to stop the current voice.
+
+Use `/say` or `$say` in Codex chat. Use `codex-say` only when you are running the helper directly in Terminal, for example `codex-say -f report.md`.
+
+For a completely model-free fallback, use macOS Spoken Content: select text on screen and use the system "Speak selected text" shortcut, commonly Option-Esc when enabled.
+
 ## Routing
 
 - If the user asks to turn automatic read-aloud on for future answers, run:
@@ -115,16 +130,3 @@ Fenced code blocks are read as their contents while the backtick fences and lang
 Codex Say includes a packaged skip-pattern file at `config/skip-patterns.txt`. It keeps noisy transcript text out of speech, including memory citations, rendered citation rows, Git commit hashes, raw links, and file paths.
 
 Users can add their own skip rules in `~/.config/codex-say/skip-patterns.txt` without editing the skill. Each rule is a Python regular expression removed before Markdown cleanup. A rule can also use `pattern => replacement` to speak a short placeholder; the packaged defaults speak raw URLs as `this link` and path-like strings as `this path`, while Markdown link labels remain readable.
-
-## User Guidance
-
-For the lowest-token workflow, tell the user:
-
-1. Invoke `$say` or `/say` with no pasted text to read the latest Codex response when available.
-2. Add `$say next` or `/say next` to a prompt when the user wants the answer currently being generated to be read automatically.
-3. Use `$say auto on` or `/say auto on` when the user wants every future final answer in the current thread read aloud.
-4. Disable automatic mode with `$say auto off` or `/say auto off`.
-5. If that is not available, copy the chat output or report text and invoke `$say clipboard` or `/say clipboard`.
-6. Stop current speech with `/say stop`, `$say stop`, or `saychat --stop`.
-
-For a completely model-free workflow, recommend macOS Spoken Content: select text on screen and use the system "Speak selected text" shortcut, commonly Option-Esc when enabled.

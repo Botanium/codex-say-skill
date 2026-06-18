@@ -4,6 +4,36 @@ Local, no-key read-aloud for Codex and ChatGPT workflows on macOS, packaged as a
 
 This skill uses macOS `say` locally, so speech does not send the spoken text through a model. It is designed for cognitive offloading: read visually while listening to the same answer, Markdown report, clipboard text, or selected chat output.
 
+## Simple Guide
+
+If you are in Codex chat, most of the time you only need:
+
+```text
+/say
+```
+
+Use `/say` after an answer to read the latest useful Codex response aloud. Type it exactly as `/say`, with no space between `/` and `say`. Codex runs the local helper for you, so you do not need to paste the answer into chat or open Terminal.
+
+Common chat commands:
+
+```text
+/say
+/say next
+/say auto on
+/say auto off
+/say clipboard
+/say stop
+```
+
+- `/say` reads the latest Codex answer when available, then falls back to the clipboard.
+- `/say next` waits for the next final answer and reads it when it appears.
+- `/say auto on` reads every future final answer in the current thread.
+- `/say auto off` turns automatic read-aloud off.
+- `/say clipboard` reads copied text.
+- `/say stop` stops the current voice.
+
+Use `/say` inside Codex chat. Use `codex-say` only in Terminal, for example `codex-say -f report.md`.
+
 ## Features
 
 - Read the latest Codex final answer from the local transcript.
@@ -50,9 +80,9 @@ readchat
 
 Make sure `~/.local/bin` is on your `PATH`.
 
-## Usage
+## Detailed Usage
 
-## Which Command Should I Use?
+### Which Command Should I Use?
 
 - Use `/say` or `$say` inside Codex chat.
 - Use `codex-say` in Terminal.

@@ -146,7 +146,7 @@ skills/say/config/skip-patterns.txt
 
 That file currently skips Codex memory citations, rendered memory-citation entries, and Git commit hashes. It also shortens raw links and path-like strings so they are spoken as `this link` or `this path` instead of long URLs or filesystem paths. Markdown links still use their readable label, so `[the repo](https://example.com)` is spoken as `the repo`.
 
-You can add personal skip rules without editing the plugin:
+You can add your own skip rules without editing the plugin:
 
 ```bash
 ~/.config/codex-say/skip-patterns.txt

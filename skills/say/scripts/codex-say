@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_source="${BASH_SOURCE[0]}"
+while [[ -L "$script_source" ]]; do
+  source_dir="$(
+    cd -P "$(dirname "$script_source")"
+    pwd
+  )"
+  script_target="$(/usr/bin/readlink "$script_source")"
+  if [[ "$script_target" != /* ]]; then
+    script_source="$source_dir/$script_target"
+  else
+    script_source="$script_target"
+  fi
+done
 self_dir="$(
-  cd "$(dirname "${BASH_SOURCE[0]}")"
+  cd -P "$(dirname "$script_source")"
   pwd
 )"
-self_path="$self_dir/$(basename "${BASH_SOURCE[0]}")"
+self_path="$self_dir/$(basename "$script_source")"
 default_rate_file="${XDG_CONFIG_HOME:-$HOME/.config}/codex-say/default_rate"
 packaged_skip_patterns_file="$self_dir/../config/skip-patterns.txt"
 user_skip_patterns_file="${XDG_CONFIG_HOME:-$HOME/.config}/codex-say/skip-patterns.txt"

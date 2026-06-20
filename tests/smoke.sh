@@ -58,6 +58,10 @@ rollout_summaries/2026-06-09T08-49-41-omt2-codex_say_plugin_and_skip_patterns.md
 </rollout_ids>
 EOF
 "$helper" --dry-run -f "$rendered_citation_sample" | grep -q "Would speak 14 characters"
+tmp_bin="$(mktemp -d)"
+ln -sf "$helper" "$tmp_bin/codex-say"
+"$tmp_bin/codex-say" --dry-run -f "$rendered_citation_sample" | grep -q "Would speak 14 characters"
+rm -rf "$tmp_bin"
 rm -f "$rendered_citation_sample"
 
 commit_sample="$(mktemp -t codex-say-commit-sample)"
